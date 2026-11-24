@@ -1,0 +1,3 @@
+ADMIN_BASIC="admin:local-admin"
+APP_BASIC="preview:local-preview"
+RELEASE_TOKEN="local-release-token"

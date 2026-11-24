@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Maintenance Manager</title>
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/dashboard.css">
+    <script type="module" src="/dashboard.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-content">
+        <span class="brand">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>Maintenance Manager</span>
+        </span>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark theme" title="Switch to dark theme">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M21 14.5A9 9 0 0 1 9.5 3a.6.6 0 0 0-.8-.7A10 10 0 1 0 21.7 15.3a.6.6 0 0 0-.7-.8Z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1.5v2.5M12 20v2.5M1.5 12H4M20 12h2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></g></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <h1>Managed domains</h1>
+      <p class="intro">Update public access and prepare for scheduled maintenance.</p>
+
+      <section class="card" aria-labelledby="domains-heading">
+        <div class="card-header">
+          <h2 id="domains-heading">Domains</h2>
+          <div class="header-actions">
+            <span id="domain-count" class="count"></span>
+            <button id="open-add" type="button" class="button">Add domain</button>
+          </div>
+        </div>
+        <p id="load-status" class="card-status" role="status">Loading domains…</p>
+        <div id="cf-banner" class="banner" hidden>
+          <p id="cf-banner-text"></p>
+          <button id="connect-all" type="button" class="button" hidden>Connect all</button>
+        </div>
+        <p id="domains-status" class="card-status" role="status"></p>
+        <div class="table-wrap">
+          <table id="domain-table" hidden>
+            <thead>
+              <tr>
+                <th scope="col">Domain</th>
+                <th scope="col">Status</th>
+                <th scope="col">Maintenance</th>
+                <th scope="col">Basic Auth</th>
+                <th scope="col">Preview</th>
+                <th scope="col"><span class="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="domains"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="domain-dialog" class="modal" aria-labelledby="selected-domain">
+      <div class="modal-header">
+        <div>
+          <h2 id="selected-domain"></h2>
+          <small id="selected-aliases" hidden></small>
+          <a id="preview" target="_blank" rel="noopener noreferrer">Open protected preview</a>
+        </div>
+        <div class="header-actions">
+          <span id="public-status" class="status-tag"></span>
+          <button type="button" class="close" data-close aria-label="Close">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <p id="dialog-status" class="dialog-status" role="status"></p>
+
+        <section id="settings" class="card" aria-labelledby="settings-heading" hidden>
+          <div class="card-header"><h3 id="settings-heading">Access settings</h3></div>
+          <form id="policy">
+            <table class="settings-table">
+              <tbody>
+                <tr>
+                  <th scope="row"><label for="managed">Managed</label><small>When off, requests go straight to the app with no maintenance page or Basic Auth.</small></th>
+                  <td><input type="checkbox" id="managed" class="switch" role="switch"></td>
+                </tr>
+                <tr>
+                  <th scope="row"><label for="maintenance">Maintenance mode</label><small>Show a maintenance page on the public hostname.</small></th>
+                  <td><input type="checkbox" id="maintenance" class="switch" role="switch"></td>
+                </tr>
+                <tr>
+                  <th scope="row"><label for="basic-auth">Require Basic Auth</label><small>Ask for credentials when the public site is online.</small></th>
+                  <td><input type="checkbox" id="basic-auth" class="switch" role="switch"></td>
+                </tr>
+                <tr>
+                  <th scope="row"><label for="message">Maintenance message</label><small>Shown on the maintenance page. Up to 500 characters.</small></th>
+                  <td><textarea id="message" rows="3" maxlength="500" required></textarea></td>
+                </tr>
+                <tr>
+                  <th scope="row"><label for="retry-after">Expected recovery time</label><small>Optional, in your local time.</small></th>
+                  <td><input id="retry-after" type="datetime-local" step="60"></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="form-footer">
+              <button id="save" type="submit">Save changes</button>
+              <button id="reload" type="button" class="secondary" hidden>Reload settings</button>
+              <span id="save-status" role="status"></span>
+            </div>
+          </form>
+        </section>
+
+        <section id="login-card" class="card" aria-labelledby="login-heading" hidden>
+          <div class="card-header">
+            <div>
+              <h3 id="login-heading">Preview login</h3>
+              <small>Used for the preview hostname and for public Basic Auth.</small>
+            </div>
+            <span id="login-source" class="status-tag"></span>
+          </div>
+          <form id="login" autocomplete="off">
+            <table class="settings-table">
+              <tbody>
+                <tr>
+                  <th scope="row"><label for="login-username">Username</label><small>Letters, numbers and symbols. No colon.</small></th>
+                  <td><input id="login-username" type="text" maxlength="64" required autocomplete="off" spellcheck="false"></td>
+                </tr>
+                <tr>
+                  <th scope="row"><label for="login-password">New password</label><small>At least 16 characters. It can't be viewed again after saving, so copy it first.</small></th>
+                  <td>
+                    <div class="password-row">
+                      <input id="login-password" type="password" minlength="16" maxlength="256" required autocomplete="new-password" spellcheck="false">
+                      <button id="generate" type="button" class="secondary">Generate</button>
+                      <button id="reveal" type="button" class="secondary" aria-pressed="false">Show</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="form-footer">
+              <button id="save-login" type="submit">Save login</button>
+              <span id="login-status" role="status"></span>
+            </div>
+          </form>
+        </section>
+
+        <section id="allow-card" class="card" aria-labelledby="allow-heading" hidden>
+          <div class="card-header">
+            <div>
+              <h3 id="allow-heading">Allowed IPs</h3>
+              <small>Visitors from these addresses skip the maintenance page and Basic Auth on the public hostname.</small>
+            </div>
+            <span id="allow-count" class="count"></span>
+          </div>
+          <p id="allow-empty" class="card-status">No allowed IPs yet.</p>
+          <div class="table-wrap">
+            <table id="allow-table" hidden>
+              <thead>
+                <tr>
+                  <th scope="col">IP or range</th>
+                  <th scope="col">Label</th>
+                  <th scope="col"><span class="visually-hidden">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="allow-list"></tbody>
+            </table>
+          </div>
+          <form id="allow-form" class="allow-add" autocomplete="off">
+            <label class="visually-hidden" for="allow-ip">IP address or range</label>
+            <input id="allow-ip" type="text" required spellcheck="false" placeholder="203.0.113.7 or 198.51.100.0/24">
+            <label class="visually-hidden" for="allow-label">Label</label>
+            <input id="allow-label" type="text" maxlength="60" placeholder="Label (optional)">
+            <button type="submit" class="button">Add</button>
+            <button id="allow-mine" type="button" class="button-secondary">Add my current IP</button>
+          </form>
+          <details class="allow-more">
+            <summary>Paste a list</summary>
+            <div class="allow-more-body">
+              <label class="visually-hidden" for="allow-paste">IP addresses, one per line</label>
+              <textarea id="allow-paste" rows="5" spellcheck="false" placeholder="203.0.113.7      Office&#10;198.51.100.0/24  VPN"></textarea>
+              <small>One IP or range per line. Anything after the address becomes its label.</small>
+              <button id="allow-paste-add" type="button" class="button">Add all</button>
+            </div>
+          </details>
+          <details id="allow-copy-box" class="allow-more">
+            <summary>Copy this list to other domains</summary>
+            <div class="allow-more-body">
+              <div id="allow-copy-targets" class="checks"></div>
+              <small>Entries are added to each domain's existing list.</small>
+              <button id="allow-copy" type="button" class="button">Copy list</button>
+            </div>
+          </details>
+          <p id="allow-status" class="allow-status" role="status"></p>
+        </section>
+
+        <section id="history" class="card" aria-labelledby="history-heading" hidden>
+          <div class="card-header">
+            <h3 id="history-heading">Change history</h3>
+            <span class="count">Latest 50 changes</span>
+          </div>
+          <p id="history-status" class="card-status" role="status"></p>
+          <div class="table-wrap">
+            <table id="audit-table" hidden>
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Operator</th>
+                  <th scope="col">Setting</th>
+                  <th scope="col">Previous</th>
+                  <th scope="col">New</th>
+                </tr>
+              </thead>
+              <tbody id="audit"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="connection-card" class="card" aria-labelledby="connection-heading" hidden>
+          <div class="card-header">
+            <div>
+              <h3 id="connection-heading">Cloudflare routes</h3>
+              <small>Requests reach this dashboard's settings only while the domain's routes point here.</small>
+            </div>
+            <span id="connection-tag" class="status-tag"></span>
+          </div>
+          <div class="card-body">
+            <p id="connection-detail"></p>
+            <div class="step-action">
+              <button id="connect" type="button" class="button">Connect routes</button>
+              <span id="connect-status" role="status"></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="remove-card" class="card danger" aria-labelledby="remove-heading" hidden>
+          <div class="card-header"><h3 id="remove-heading">Remove domain</h3></div>
+          <div class="card-body remove-options">
+            <div>
+              <strong>Stop managing</strong>
+              <p>Requests go straight to the app, but the domain stays listed. Undo it with the Managed switch.</p>
+              <div class="step-action">
+                <button id="unmanage" type="button" class="button-secondary">Stop managing now</button>
+                <span id="unmanage-status" role="status"></span>
+              </div>
+            </div>
+            <div>
+              <strong>Remove from the dashboard</strong>
+              <p>Deletes the domain's routes<span id="remove-preview-note"> and its preview DNS record</span> in Cloudflare and removes it from the list. The site keeps running on the app Worker. Its settings and history return if you add it again.</p>
+              <div class="step-action">
+                <button id="remove" type="button" class="danger-button">Remove domain…</button>
+              </div>
+              <div id="remove-confirm" class="confirm" hidden>
+                <p>Remove <strong id="remove-name"></strong>? Type the hostname to confirm.</p>
+                <label class="visually-hidden" for="remove-typed">Hostname</label>
+                <input id="remove-typed" type="text" spellcheck="false" autocomplete="off">
+                <div class="step-action">
+                  <button id="remove-cancel" type="button" class="button-secondary">Cancel</button>
+                  <button id="remove-go" type="button" class="danger-solid" disabled>Remove domain</button>
+                </div>
+              </div>
+              <p id="remove-status" class="remove-status" role="status"></p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog id="add-dialog" class="modal modal-narrow" aria-labelledby="add-heading">
+      <div class="modal-header">
+        <div>
+          <h2 id="add-heading">Add domain</h2>
+          <small>Creates the domain's routes in Cloudflare. Maintenance and Basic Auth start off.</small>
+        </div>
+        <button type="button" class="close" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="add-form" class="card" autocomplete="off">
+          <table class="settings-table">
+            <tbody>
+              <tr>
+                <th scope="row"><label for="add-hostname">Public hostname</label><small id="add-zone-hint">For example blog.zayarnaing.com.</small></th>
+                <td><input id="add-hostname" type="text" required spellcheck="false" placeholder="blog.zayarnaing.com"></td>
+              </tr>
+              <tr>
+                <th scope="row"><label for="add-app">App Worker</label><small>The Worker that serves the app.</small></th>
+                <td>
+                  <select id="add-app" required></select>
+                  <small id="add-app-hint">Not listed? Run <code>npm run app:add -- &lt;worker-name&gt; --deploy</code> in the project folder first.</small>
+                </td>
+              </tr>
+              <tr>
+                <th scope="row"><label for="add-aliases">Aliases</label><small>Optional. Other hostnames for the same app, separated by commas.</small></th>
+                <td><input id="add-aliases" type="text" spellcheck="false" placeholder="www.blog.zayarnaing.com"></td>
+              </tr>
+              <tr>
+                <th scope="row"><label for="add-use-preview">Preview hostname</label><small>A separate protected address for checking the app. Skip it if allowed IPs are enough.</small></th>
+                <td>
+                  <label class="check"><input id="add-use-preview" type="checkbox" checked> Create a preview hostname</label>
+                  <label class="visually-hidden" for="add-preview">Preview hostname</label>
+                  <input id="add-preview" type="text" spellcheck="false" aria-describedby="add-preview-hint">
+                  <small id="add-preview-hint">Optional. Leave empty for the suggested name.</small>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="form-footer">
+            <button id="add-submit" type="submit">Add domain</button>
+            <span id="add-status" role="status"></span>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  </body>
+</html>

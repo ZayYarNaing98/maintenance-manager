@@ -1,0 +1,52 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "maintenance-manager-local",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-08",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "POLICIES",
+        "class_name": "DomainPolicy"
+      },
+      {
+        "name": "REGISTRY",
+        "class_name": "DomainRegistry"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "DomainPolicy"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "DomainRegistry"
+      ]
+    }
+  ],
+  "vars": {
+    "ADMIN_HOST": "localhost",
+    "RELEASE_DOMAIN": "app.localhost",
+    "DOMAINS": [
+      {
+        "hostname": "app.localhost",
+        "preview": "preview.localhost",
+        "credential": "APP_BASIC",
+        "demo": true
+      }
+    ]
+  }
+}
