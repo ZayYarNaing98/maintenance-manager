@@ -48,7 +48,13 @@ button:disabled { cursor: default; opacity: .65; }
 .header-content { display: flex; align-items: center; justify-content: space-between; gap: .8rem; min-height: 4.25rem; font-weight: 650; }
 .brand { display: flex; align-items: center; gap: .8rem; }
 .theme-toggle { display: grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0; border: 1px solid rgb(237 248 240 / .25); border-radius: .55rem; background: transparent; color: #edf8f0; }
-.theme-toggle:hover { background: rgb(237 248 240 / .1); }
+.theme-toggle:hover, .header-button:hover { background: rgb(237 248 240 / .1); }
+.header-actions { display: flex; align-items: center; gap: .5rem; }
+.header-button { height: 2.4rem; padding: 0 .85rem; border: 1px solid rgb(237 248 240 / .25); border-radius: .55rem; background: transparent; color: #edf8f0; font-weight: 600; font-size: .9rem; text-decoration: none; display: inline-flex; align-items: center; }
+.header-button:focus-visible { outline-color: #8fe3bf; }
+.signed-out { max-width: 32rem; margin-top: 3rem; }
+.signed-out p { margin: 0 0 1.25rem; color: var(--muted); }
+a.button { display: inline-block; text-decoration: none; }
 .theme-toggle:focus-visible { outline-color: #8fe3bf; }
 .icon-sun, [data-theme="dark"] .icon-moon { display: none; }
 [data-theme="dark"] .icon-sun { display: block; }

@@ -39,14 +39,6 @@
   ],
   "vars": {
     "ADMIN_HOST": "localhost",
-    "RELEASE_DOMAIN": "app.localhost",
-    "DOMAINS": [
-      {
-        "hostname": "app.localhost",
-        "preview": "preview.localhost",
-        "credential": "APP_BASIC",
-        "demo": true
-      }
-    ]
+    "DOMAINS": []
   }
 }

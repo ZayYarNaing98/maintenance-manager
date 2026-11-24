@@ -6,6 +6,12 @@ import { MIN_PASSWORD_LENGTH, validateAllowlist, validateLogin, validateNewDomai
 
 const noStore = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const adminAssets = new Map([['/', '/index.html'], ['/dashboard.js', '/dashboard.js'], ['/dashboard.css', '/dashboard.css'], ['/theme.js', '/theme.js']]);
+// Static files served without signing in, so the signed-out page can load its styles.
+const openAssets = new Map([['/signed-out', '/signed-out.html'], ['/dashboard.css', '/dashboard.css'], ['/theme.js', '/theme.js']]);
+// Basic Auth has no logout. Signing out makes the browser save this placeholder login in place
+// of the real one. The dashboard rejects it, so the next visit asks for the login again.
+const SIGNED_OUT = 'signed-out:signed-out';
+const ADMIN_REALM = 'Maintenance administration';
 const textEncoder = new TextEncoder();
 
 const json = (value, status = 200) => Response.json(value, { status, headers: noStore });
@@ -141,15 +147,23 @@ async function managedDomains(env) {
 const rememberDomains = (domains) => { registryCache = { at: Date.now(), domains }; };
 const hostnamesOf = (domain) => [domain.hostname, ...(domain.aliases ?? []), ...(domain.preview ? [domain.preview] : [])];
 
+// Local mode runs `npm run dev` on localhost without Cloudflare: *.localhost domains are added
+// and removed in the registry only, and can use a built-in demo app.
+const DEMO_APP = { binding: 'DEMO', worker: 'Built-in demo app' };
+const localMode = (env) => env.ADMIN_HOST === 'localhost';
+const canManage = (env) => localMode(env) || cloudflareConfigured(env);
+const zonesOf = (env) => (localMode(env) ? ['localhost'] : env.ZONES ?? []);
+
 // App Workers the manager can forward to. APPS names them; without it, use the seeded bindings.
 function availableApps(env) {
   const apps = env.APPS ?? [...new Set((env.DOMAINS ?? []).map((entry) => entry.service).filter(Boolean))]
     .map((binding) => ({ binding, worker: binding }));
-  return apps.filter((app) => typeof env[app.binding]?.fetch === 'function');
+  const bound = apps.filter((app) => typeof env[app.binding]?.fetch === 'function');
+  return localMode(env) ? [DEMO_APP, ...bound] : bound;
 }
 
 function publicDomain(env, { hostname, preview = null, aliases = [], service = null }) {
-  const app = (env.APPS ?? []).find((item) => item.binding === service);
+  const app = [DEMO_APP, ...(env.APPS ?? [])].find((item) => item.binding === service);
   return { hostname, preview, aliases, service, worker: app?.worker ?? service };
 }
 
@@ -183,8 +197,24 @@ async function readJson(request) {
   }
 }
 
+async function serveAsset(request, env, url, asset) {
+  const response = await env.ASSETS.fetch(new Request(new URL(asset, url), { method: request.method }));
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(noStore)) headers.set(key, value);
+  headers.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  headers.set('Referrer-Policy', 'no-referrer');
+  return new Response(response.body, { status: response.status, headers });
+}
+
 async function serveAdmin(request, env, url) {
   const { pathname } = url;
+  if (pathname === '/logout') {
+    if (basicCredentials(request.headers.get('Authorization')) === SIGNED_OUT) return new Response('Signed out.\n', { headers: noStore });
+    return challenge(ADMIN_REALM);
+  }
+  if (openAssets.has(pathname) && ['GET', 'HEAD'].includes(request.method)) {
+    return serveAsset(request, env, url, openAssets.get(pathname));
+  }
   const domains = await managedDomains(env);
   const forPath = (suffix) => domains.find((entry) => pathname === `/api/domains/${entry.hostname}${suffix}`);
   const domain = forPath('');
@@ -200,7 +230,7 @@ async function serveAdmin(request, env, url) {
   if (!release) {
     if (!validBasicSecret(env.ADMIN_BASIC)) return error('Admin credentials are unavailable.', 503);
     const credentials = basicCredentials(authorization);
-    if (!await matchesSecret(credentials, env.ADMIN_BASIC)) return challenge('Maintenance administration');
+    if (!await matchesSecret(credentials, env.ADMIN_BASIC)) return challenge(ADMIN_REALM);
     actor = credentials.slice(0, credentials.indexOf(':'));
   }
 
@@ -214,17 +244,23 @@ async function serveAdmin(request, env, url) {
   }
 
   if (request.method === 'POST' && pathname === '/api/domains') {
-    if (!cloudflareConfigured(env)) return error('Set the CLOUDFLARE_API_TOKEN secret to add domains from the dashboard.', 503);
+    if (!canManage(env)) return error('Set the CLOUDFLARE_API_TOKEN secret to add domains from the dashboard.', 503);
     const result = validateNewDomain(await readJson(request), availableApps(env).map((app) => app.binding));
     if (result.error) return error(result.error, 400);
-    const entry = result.entry;
+    const entry = result.entry.service === DEMO_APP.binding ? { ...result.entry, demo: true } : result.entry;
     const hosts = hostnamesOf(entry);
     if (hosts.includes(env.ADMIN_HOST)) return error(`${env.ADMIN_HOST} is the dashboard's own hostname.`, 409);
     const used = new Set(domains.flatMap(hostnamesOf));
     const clash = hosts.find((host) => used.has(host));
     if (clash) return error(`${clash} is already used by a listed domain.`, 409);
-    const zone = zoneFor(env, hosts);
-    if (!zone) return error(`Every hostname must be in one zone: ${env.ZONES.join(', ')}.`, 400);
+    const zone = zoneFor({ ZONES: zonesOf(env) }, hosts);
+    if (!zone) return error(`Every hostname must be in one zone: ${zonesOf(env).join(', ')}.`, 400);
+    if (localMode(env)) {
+      const saved = await registryObject(env).add(entry, [env.ADMIN_HOST]);
+      if (saved.conflict) return error(`${saved.conflict} is already used by a listed domain.`, 409);
+      rememberDomains(saved.domains);
+      return json({ domain: publicDomain(env, entry), warnings: [] }, 201);
+    }
     const api = new CloudflareApi(env);
     const { warnings } = await api.connect(zone, entry);
     const saved = await registryObject(env).add(entry, [env.ADMIN_HOST]);
@@ -237,12 +273,12 @@ async function serveAdmin(request, env, url) {
   }
 
   if (request.method === 'DELETE' && domain) {
-    if (!cloudflareConfigured(env)) return error('Set the CLOUDFLARE_API_TOKEN secret to remove domains from the dashboard.', 503);
+    if (!canManage(env)) return error('Set the CLOUDFLARE_API_TOKEN secret to remove domains from the dashboard.', 503);
     if (env.RELEASE_DOMAIN === domain.hostname) {
       return error(`${domain.hostname} is the release domain for CI. Change RELEASE_DOMAIN before removing it.`, 409);
     }
-    const zone = zoneFor(env, hostnamesOf(domain));
-    const { warnings } = zone
+    const zone = localMode(env) ? null : zoneFor(env, hostnamesOf(domain));
+    const { warnings } = localMode(env) ? { warnings: [] } : zone
       ? await new CloudflareApi(env).disconnect(zone, domain)
       : { warnings: ['This domain is outside the configured zones, so no routes were changed.'] };
     const saved = await registryObject(env).remove(domain.hostname);
@@ -252,6 +288,7 @@ async function serveAdmin(request, env, url) {
   }
 
   if (request.method === 'POST' && connectDomain) {
+    if (localMode(env)) return json({ warnings: [] });
     if (!cloudflareConfigured(env)) return error('Set the CLOUDFLARE_API_TOKEN secret to connect domains.', 503);
     const zone = zoneFor(env, hostnamesOf(connectDomain));
     if (!zone) return error(`Every hostname must be in one zone: ${env.ZONES.join(', ')}.`, 400);
@@ -301,9 +338,12 @@ async function serveAdmin(request, env, url) {
     }
     if (pathname === '/api/domains') return json(domains.map((entry) => publicDomain(env, entry)));
     if (pathname === '/api/apps') {
-      return json({ apps: availableApps(env), cloudflare: cloudflareConfigured(env), zones: env.ZONES ?? [] });
+      return json({ apps: availableApps(env), cloudflare: canManage(env), local: localMode(env), zones: zonesOf(env) });
     }
     if (pathname === '/api/route-status') {
+      if (localMode(env)) {
+        return json({ configured: true, domains: Object.fromEntries(domains.map((entry) => [entry.hostname, { connected: true, missing: [] }])) });
+      }
       if (!cloudflareConfigured(env)) return json({ configured: false, domains: {} });
       const api = new CloudflareApi(env);
       const status = {};
@@ -319,14 +359,7 @@ async function serveAdmin(request, env, url) {
   }
 
   const asset = adminAssets.get(pathname);
-  if (asset && ['GET', 'HEAD'].includes(request.method)) {
-    const response = await env.ASSETS.fetch(new Request(new URL(asset, url), { method: request.method }));
-    const headers = new Headers(response.headers);
-    for (const [key, value] of Object.entries(noStore)) headers.set(key, value);
-    headers.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
-    headers.set('Referrer-Policy', 'no-referrer');
-    return new Response(response.body, { status: response.status, headers });
-  }
+  if (asset && ['GET', 'HEAD'].includes(request.method)) return serveAsset(request, env, url, asset);
   if (domain) return new Response('Method not allowed.', { status: 405, headers: { ...noStore, Allow: 'GET, PATCH, DELETE' } });
   if (connectDomain) return new Response('Method not allowed.', { status: 405, headers: { ...noStore, Allow: 'POST' } });
   if (loginDomain || allowDomain) return new Response('Method not allowed.', { status: 405, headers: { ...noStore, Allow: 'PUT' } });

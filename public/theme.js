@@ -17,6 +17,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     const button = document.getElementById('theme-toggle');
+    if (!button) return;
     const label = () => {
       const text = root.dataset.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
       button.setAttribute('aria-label', text);

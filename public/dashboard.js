@@ -860,3 +860,12 @@ try {
 } catch (error) {
   status(loadStatus, error.message, true);
 }
+
+// Basic Auth has no logout. Sign in to /logout with a placeholder login so the browser saves it
+// in place of the real one; the dashboard rejects it, so the next visit asks to sign in again.
+byId('sign-out').addEventListener('click', () => {
+  const request = new XMLHttpRequest();
+  request.open('GET', '/logout', true, 'signed-out', 'signed-out');
+  request.onloadend = () => location.replace('/signed-out');
+  request.send();
+});

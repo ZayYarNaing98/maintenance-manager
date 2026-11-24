@@ -79,13 +79,14 @@ The project uses two env files, both ignored by Git:
 
 Keep them separate so local testing never uses real passwords or changes real Cloudflare routes.
 
-| Local hostname | Access |
-| --- | --- |
-| `http://localhost:8787` | Admin dashboard. Use `admin` / `local-admin`. |
-| `http://app.localhost:8787` | Demo app with the public policy applied. |
-| `http://preview.localhost:8787` | Protected preview. Use `preview` / `local-preview` until you save a different login in the dashboard. The same login applies if you enable Basic Auth on the public hostname. |
+The local manager starts with no domains. It runs without Cloudflare, so you can add `*.localhost` domains that use the built-in demo app:
 
-Change settings in the dashboard and select **Save changes**. Reload the public app to check the new policy. Public maintenance takes precedence over the public Basic Auth switch and returns HTTP `503`. The preview remains protected and available during maintenance. The values in `.env.example` are local test credentials. To reset local settings, logins and history, stop the server and delete `.wrangler/state`.
+1. Open `http://localhost:8787` and sign in with `admin` / `password`.
+2. Select **Add domain**. Enter `app.localhost`, keep **Built-in demo app**, and keep the suggested preview `app-preview.localhost`.
+3. In **Manage**, set a preview login under **Preview login**.
+4. Open `http://app.localhost:8787` for the public app and `http://app-preview.localhost:8787` for the protected preview.
+
+Change settings in the dashboard and select **Save changes**. Reload the public app to check the new policy. Public maintenance takes precedence over the public Basic Auth switch and returns HTTP `503`. The preview remains protected and available during maintenance, and returns `503` until it has a login. Locally, **Add domain** and **Remove** only change the list. They never call Cloudflare. To reset local domains, settings, logins and history, stop the server and delete `.wrangler/state`.
 
 ```sh
 npm test
@@ -128,7 +129,7 @@ npx wrangler deploy --config wrangler.production.jsonc
 npx wrangler secret bulk .env.production --config wrangler.production.jsonc
 ```
 
-Secrets apply to the live Worker immediately, and later deployments keep them. To change a secret, edit `.env.production` and run `secret bulk` again. Editing the file alone has no effect. Use `ADMIN_BASIC` to sign in to the dashboard and `APP_BASIC` for the preview hostname until you set a preview login in the dashboard. If the browser offers an old saved login, update or remove it. You can also run `npx wrangler deploy --config wrangler.production.jsonc --secrets-file .env.production` to deploy and upload in one step.
+Secrets apply to the live Worker immediately, and later deployments keep them. To change a secret, edit `.env.production` and run `secret bulk` again. Editing the file alone has no effect. Use `ADMIN_BASIC` to sign in to the dashboard and `APP_BASIC` for the preview hostname until you set a preview login in the dashboard. If the browser offers an old saved login, update or remove it. Select **Sign out** in the header to make the browser forget the dashboard login. The next visit asks for it again. You can also run `npx wrangler deploy --config wrangler.production.jsonc --secrets-file .env.production` to deploy and upload in one step.
 
 `.env` serves only `npm run dev` and is never uploaded. `.env.production` is used only when you upload it.
 

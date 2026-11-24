@@ -31,6 +31,11 @@ export default {
 
     equal((await fetch(admin)).status, 401, 'dashboard requires credentials');
     equal((await fetch(`${admin}/dashboard.js`)).status, 401, 'assets require credentials');
+    const signedOut = { Authorization: `Basic ${btoa('signed-out:signed-out')}` };
+    equal((await fetch(`${admin}/logout`, { headers: operator })).status, 401, 'logout rejects the real login');
+    equal((await fetch(`${admin}/logout`, { headers: signedOut })).status, 200, 'logout accepts the placeholder login');
+    equal((await fetch(`${admin}/api/domains`, { headers: signedOut })).status, 401, 'placeholder login cannot use the dashboard');
+    equal((await fetch(`${admin}/signed-out`)).status, 200, 'signed-out page is open');
     equal((await fetch(`${admin}/theme.js`, { headers: operator })).status, 200, 'theme script');
     equal((await fetch(`${policyUrl}/audit`, { headers: user })).status, 401, 'preview cannot read audit');
     const dashboard = await fetch(admin, { headers: operator });
