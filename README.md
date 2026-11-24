@@ -44,7 +44,7 @@ The runtime test exercises request forwarding against another Worker and uses a 
 ## Deploy to one test subdomain
 
 1. Choose a test app Worker and two hostnames in your Cloudflare zone: one for the public app and one for the dashboard. Attach the public hostname to the **app Worker** as a custom domain first.
-2. Copy `wrangler.production.example.jsonc` to `wrangler.production.jsonc`. Set the dashboard hostname in `routes` and `ADMIN_HOST`, your zone in `ZONES`, the app Worker in `services` and `APPS`, and the first domain in `DOMAINS`. `DOMAINS` only seeds the domain list the first time the manager runs. After that, the dashboard owns the list.
+2. Copy `wrangler.production.example.jsonc` to `wrangler.production.jsonc`. Set the dashboard hostname in `routes` and `ADMIN_HOST`, your zone in `ZONES`, and the app Worker in `services` and `APPS`. `DOMAINS` is empty, so the manager starts with no managed domains and you add them in the dashboard. Optionally, list domains in `DOMAINS` to seed the list. It is read only the first time the manager runs. After that, the dashboard owns the list, and editing `DOMAINS` has no effect.
 3. Copy `.env.production.example` to `.env.production` and set separate, unique credentials. Each value must use the `username:password` form, or the gateway treats it as unavailable and returns `503`. Generate long passwords, for example with `openssl rand -base64 24`, and keep a copy in a password manager. Git ignores `.env.production`.
 
 ```sh
@@ -67,7 +67,7 @@ The dashboard uses `CLOUDFLARE_API_TOKEN` to create and delete the routes and pr
 
 Under **Zone Resources**, include only the specific zones in `ZONES`. The token cannot change Worker code or other zones. Without it, the dashboard still manages settings, but Add, Remove and Connect are unavailable.
 
-4. Sign in to Wrangler, deploy the manager, and upload the credentials. Then open the dashboard and select **Connect all** to create the routes for the seeded domains.
+4. Sign in to Wrangler, deploy the manager, and upload the credentials. Then open the dashboard and select **Add domain**. If you seeded `DOMAINS`, select **Connect all** instead to create their routes.
 
 ```sh
 npx wrangler login
@@ -126,7 +126,7 @@ Use the admin hostname and admin Basic Auth for the following endpoints.
 
 Policy fields are `managed`, `maintenanceEnabled`, `basicAuthEnabled`, `maintenanceMessage`, and `retryAfterAt`. Responses also include `allowlist`, `login` (username and change time, or `null`), and `loginSource` (`dashboard`, `secret`, or `none`). Send the recovery estimate in UTC ISO format with milliseconds, such as `2027-01-15T18:30:00.000Z`, or send `null` to clear it. A recovery estimate sets a `Retry-After` header while the estimate is in the future. The operator or release job explicitly reopens the site.
 
-For automation, configure `RELEASE_DOMAIN` and add a separate `RELEASE_TOKEN` line to `.env.production`, then run `secret bulk` again. The token can only set `maintenanceEnabled` for that domain. Store the token in your CI secret store and send this request before deploying.
+For automation, add `"RELEASE_DOMAIN": "<hostname>"` to `vars`, add a separate `RELEASE_TOKEN` line to `.env.production`, then run `secret bulk` again. The token can only set `maintenanceEnabled` for that domain. Store the token in your CI secret store and send this request before deploying.
 
 ```sh
 curl --fail-with-body --silent --show-error \
