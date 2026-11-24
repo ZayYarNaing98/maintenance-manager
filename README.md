@@ -2,6 +2,59 @@
 
 Control maintenance mode and HTTP Basic Auth per hostname from a dashboard. A Cloudflare Worker handles incoming requests, and a SQLite-backed Durable Object stores the live settings and the change history for each hostname. The dashboard shows the latest 50 changes.
 
+## Architecture
+
+```text
+              Visitor                                Operator
+                  │ app.example.com                      │ admin login
+                  │ app-preview.example.com              │
+                  ▼                                      ▼
+┌───────────────────────────────────┐  ┌───────────────────────────────────┐
+│ Cloudflare Worker routes          │  │ Dashboard and API                 │
+│ hostname/* runs the manager       │  │ maintenance.example.com           │
+└─────────────────┬─────────────────┘  └─────────────────┬─────────────────┘
+                  │                                      │
+                  ▼                                      ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        maintenance-manager Worker                        │
+│                                                                          │
+│ find the domain  →  read its policy  →  decide:                          │
+│   managed off or allowed IP   → forward to the app                       │
+│   maintenance on              → maintenance page, HTTP 503               │
+│   Basic Auth on, or preview   → ask for the login                        │
+│ dashboard requests  →  save settings, add or remove domains              │
+└────────┬──────────────────┬──────────────────┬──────────────────┬────────┘
+         │                  │                  │                  │
+         ▼                  ▼                  ▼                  ▼
+┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌─────────────────┐
+│ DomainRegistry │ │  DomainPolicy  │ │  App Workers   │ │  Cloudflare API │
+│  domain list   │ │ one per domain │ │  via service   │ │    routes and   │
+│   one object   │ │ settings, IPs  │ │    bindings    │ │   preview DNS   │
+└────────────────┘ └────────────────┘ └────────────────┘ └─────────────────┘
+```
+
+| Part | Role |
+| --- | --- |
+| Worker routes | A route such as `app.example.com/*` runs the manager before the app Worker's own custom domain. |
+| maintenance-manager | Checks every request, serves the maintenance page or asks for a login when needed, and forwards allowed requests. It also serves the dashboard on the admin hostname. |
+| DomainRegistry | One SQLite-backed Durable Object that stores the domain list: hostnames, aliases, previews and app Workers. |
+| DomainPolicy | One SQLite-backed Durable Object per domain that stores its live settings, the preview login digest, allowed IPs and change history. Each change and its history entry are saved together. |
+| Service bindings | Fixed connections to the app Workers, set at deploy time with `npm run app:add`. |
+| Cloudflare API | Used only by the dashboard, with a token limited to routes and DNS in your zones. It never changes Worker code. |
+
+How a public request is handled:
+
+1. Cloudflare matches the route and runs the manager.
+2. The manager finds the domain for the hostname, including aliases.
+3. It applies the domain's policy in this order:
+   - **Managed off:** the request goes to the app.
+   - **Allowed IP:** the request goes to the app.
+   - **Maintenance on:** the visitor gets the maintenance page with HTTP `503`.
+   - **Basic Auth on:** the visitor must sign in. The manager removes the login header before forwarding.
+4. The manager forwards the request to the app Worker, which sees the original hostname.
+
+Preview hostnames always require the login and skip maintenance, so you can check a release while the public site shows the maintenance page.
+
 ## Requirements
 
 - A Cloudflare account. The free plan works.
