@@ -2,15 +2,29 @@
 
 Control maintenance mode and HTTP Basic Auth per hostname from a dashboard. A Cloudflare Worker handles incoming requests, and a SQLite-backed Durable Object stores the live settings and the change history for each hostname. The dashboard shows the latest 50 changes.
 
-## Try it locally
+## Requirements
 
-Requires Node.js 22 or later.
+- A Cloudflare account. The free plan works.
+- A domain whose DNS is on Cloudflare. If it is registered elsewhere, change its nameservers to Cloudflare; you can keep the registrar. Worker routes only work on Cloudflare-proxied zones.
+- Apps that run as Cloudflare Workers. The manager forwards requests to them through service bindings.
+- Node.js 22 or later.
+
+## Try it locally
 
 ```sh
 npm ci
-cp .dev.vars.example .dev.vars
+cp .env.example .env
 npm run dev
 ```
+
+The project uses two env files, both ignored by Git:
+
+| File | Used by | Contents |
+| --- | --- | --- |
+| `.env` | `npm run dev` only, never uploaded | Throwaway local logins |
+| `.env.production` | `wrangler secret bulk`, only when you run it | Real logins and the Cloudflare API token |
+
+Keep them separate so local testing never uses real passwords or changes real Cloudflare routes.
 
 | Local hostname | Access |
 | --- | --- |
@@ -18,7 +32,7 @@ npm run dev
 | `http://app.localhost:8787` | Demo app with the public policy applied. |
 | `http://preview.localhost:8787` | Protected preview. Use `preview` / `local-preview` until you save a different login in the dashboard. The same login applies if you enable Basic Auth on the public hostname. |
 
-Change settings in the dashboard and select **Save changes**. Reload the public app to check the new policy. Public maintenance takes precedence over the public Basic Auth switch and returns HTTP `503`. The preview remains protected and available during maintenance. The values in `.dev.vars.example` are local test credentials. To reset local settings, logins and history, stop the server and delete `.wrangler/state`.
+Change settings in the dashboard and select **Save changes**. Reload the public app to check the new policy. Public maintenance takes precedence over the public Basic Auth switch and returns HTTP `503`. The preview remains protected and available during maintenance. The values in `.env.example` are local test credentials. To reset local settings, logins and history, stop the server and delete `.wrangler/state`.
 
 ```sh
 npm test
@@ -63,7 +77,7 @@ npx wrangler secret bulk .env.production --config wrangler.production.jsonc
 
 Secrets apply to the live Worker immediately, and later deployments keep them. To change a secret, edit `.env.production` and run `secret bulk` again. Editing the file alone has no effect. Use `ADMIN_BASIC` to sign in to the dashboard and `APP_BASIC` for the preview hostname until you set a preview login in the dashboard. If the browser offers an old saved login, update or remove it. You can also run `npx wrangler deploy --config wrangler.production.jsonc --secrets-file .env.production` to deploy and upload in one step.
 
-`.dev.vars` serves only `npm run dev` and is never uploaded. `.env.production` is used only when you upload it.
+`.env` serves only `npm run dev` and is never uploaded. `.env.production` is used only when you upload it.
 
 Check the app, preview, and dashboard before onboarding a production hostname. Keep any direct app hostnames, including the app Worker’s own `workers.dev` or preview URLs, private, disabled, or covered by the same policy. Confirm that the preview works with the app’s redirects, cookies, and asset URLs. The gateway removes its Basic Auth header before forwarding. For apps that use bearer tokens in `Authorization`, use a separate Basic Auth preview for browser checks and leave the public Basic Auth switch off for that API. Already-open connections and responses served from browser caches may continue after a switch.
 
@@ -124,3 +138,7 @@ curl --fail-with-body --silent --show-error \
 ```
 
 After deploying, verify the release through the protected preview. Send the same request with `false` after the check passes. If the check fails, leave maintenance enabled until a verified rollback or fix. Repeating the same setting leaves the policy and history unchanged.
+
+## License
+
+[MIT](LICENSE)
